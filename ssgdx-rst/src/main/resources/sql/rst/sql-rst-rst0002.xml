@@ -1,0 +1,633 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--  
+<[CDATA[
+ project : 신세계백화점차세대프로젝트
+ packageName : 
+ fileName : 
+ author : q93m9k
+ date : 2024.03.08
+ description : 
+  
+ COPYRIGHT ©2024 SHINSEGAE. ALL RIGHTS RESERVED.
+  
+ ===========================================================
+ DATE              AUTHOR             NOTE
+ ===========================================================
+ 2024.03.08       q93m9k              최초 생성
+]]> 
+-->
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="rst.Rst0002">
+    <select id="selectDepositItemCmmnCdRfrVal" resultType="String">
+        /* q93m9k: 2023-08-21 rst.Rst0002.selectDepositItemCmmnCdRfrVal 외상거래 아이템 - TOBE 회계단위 조회 */
+        SELECT A.CMMN_CD_RFR_VAL1 AS cmmnCdRfrVal -- TOBE회계단위
+          FROM CM_CMMN_CD_D A
+        WHERE 1=1
+           AND A.CMMN_CD = 'ACTG_UNT_BIZ_RELM_MPNG_CD'
+           AND A.DTL_CD  = TRIM(#{cmmnCdRfrVal}) -- ASIS회계단위
+        LIMIT 1
+    </select>
+    
+    <select id="selectDepositItemShopCode" resultType="String">
+        /* q93m9k: 2023-08-21 rst.Rst0002.selectDepositItemShopCode 외상거래 아이템 - 매장코드 조회 */
+        SELECT USG_PSBL_SHOP_CD AS shopCode -- 사용가능매장코드
+          FROM SS_USG_SALS_REQ_P -- SS_사용매출의뢰_내역
+         WHERE 1=1
+           AND APLY_BIZ_RELM_CD = TRIM(#{aplyBizRelmCd}) -- 신청사업영역코드
+           AND APVL_APLY_YM     = TRIM(#{apvlAplyYm}) -- 승인신청연월
+           AND APVL_APLY_SNO    = CAST(TRIM(#{apvlAplySno}) AS UNSIGNED) -- 승인신청일련번호
+        LIMIT 1
+    </select>
+    
+    <select id="selectDepositItemApvlAplySno" resultType="String">
+        /* q93m9k: 2023-08-21 rst.Rst0002.selectDepositItemApvlAplySno 외상거래 아이템 - 승인신청일련번호 조회 */
+        SELECT LPAD(IFNULL(MAX(APVL_APLY_SNO) + 1, 1), 4, 0) AS apvlAplySno
+          FROM SS_USG_SALS_REQ_P -- SS_사용매출의뢰_내역
+         WHERE 1=1
+           AND APLY_BIZ_RELM_CD = TRIM(#{aplyBizRelmCd}) -- 신청사업영역코드
+           AND APVL_APLY_YM     = TRIM(#{apvlAplyYm}) -- 승인신청연월
+    </select>
+    
+    <select id="selectGoodsItemCategoryCode" resultType="String">
+        /* q93m9k: 2023-08-21 rst.Rst0002.selectGoodsItemCategoryCode 상품정보아이템 - 품목단축코드 조회 */
+        SELECT PDCT_CL_CD -- 상품분류코드(6)
+          FROM MT_PDCT_CL_M -- MT_상품분류_마스터
+         WHERE 1=1
+           AND PDCT_CL_SHT_CD = #{categoryCode} -- 상품분류단축코드(4)
+        LIMIT 1
+    </select>
+    
+    <resultMap id="selectGoodsItemShopCdBizRelmCd" type="Map">
+        <result column="shopCd" property="shopCd" />
+        <result column="bizRelmCd" property="bizRelmCd" />
+    </resultMap>
+    <select id="selectGoodsItemShopCdBizRelmCd" resultMap="selectGoodsItemShopCdBizRelmCd">
+        /* q93m9k: 2023-08-21 rst.Rst0002.selectGoodsItemShopCdBizRelmCd 상품정보아이템 - 매장코드, 사업영역코드 조회 */
+        SELECT  A.SHOP_CD AS shopCd -- 매장코드
+               ,A.BIZ_RELM_CD AS bizRelmCd -- 사업영역코드
+          FROM MT_SHOP_M$ A -- MT_매장_마스터
+         INNER JOIN (SELECT  STR_CD -- 점포코드
+                            ,SHOP_CD -- 매장코드
+                       FROM MT_SHOP_MD_M -- MT_매장MD_마스터
+                      WHERE 1=1
+                        AND STR_CD = TRIM(#{storeNo}) -- 점포코드
+                        AND MD_CD  = #{mdCode} -- MD코드
+                        AND DATE_FORMAT(CURDATE(), '%Y%m%d') BETWEEN MD_BGN_YMD AND MD_END_YMD -- 매장이동시 이동전매장MD의 종료일자를 종료처리 함
+                     LIMIT 1
+                    ) B
+            ON A.STR_CD  = B.STR_CD
+           AND A.SHOP_CD = B.SHOP_CD
+    </select>
+    
+    <select id="selectGoodsItemProfitCenterCode" resultType="String">
+        /* q93m9k: 2023-08-21 rst.Rst0002.selectGoodsItemProfitCenterCode 상품정보아이템 - 손익센터코드 조회 */
+        SELECT PRLS_CETR_CD AS profitCenterCode -- 손익센터코드
+          FROM MT_CMMN_MD_M           -- MT_공통MD_마스터
+         WHERE MD_CD = #{mdCode} -- MD코드
+        LIMIT 1
+    </select>
+    
+    <select id="selectGoodsItemPrdtBrandCode" resultType="String">
+        /* q93m9k: 2023-08-21 rst.Rst0002.selectGoodsItemPrdtBrandCode 상품정보아이템 - 상품브랜드코드 조회(단품일때만) */
+        SELECT B.PDCT_BRD_CD AS prdtBrandCode   -- 상품브랜드코드
+          FROM PR_PIPD_M A                      -- PR_단품_마스터
+             , PR_PDCT_M B                      -- PR_상품_마스터
+         WHERE A.PDCT_CD = B.PDCT_CD            -- 상품코드
+           AND A.PIPD_CD = #{pluCode}      -- 단품코드
+        LIMIT 1
+    </select>
+    
+    <select id="selectGoodsItemEvnCd" resultType="String">
+        /* q93m9k: 2023-08-21 rst.Rst0002.selectGoodsItemEvnCd 상품정보아이템 - 행사코드 조회(단품일때만) */
+        SELECT SA.EVN_CD AS evnCd -- 행사코드
+          FROM PR_SHOP_PIPD_PRC SA
+         WHERE SA.STR_CD     = #{strCd} -- 점포코드
+           AND SA.SHOP_CD    = #{shopCd} -- 매장코드
+           AND SA.PIPD_CD    = #{pipdCd} -- 단품코드
+           AND #{prcBgnYmd} BETWEEN SA.PRC_BGN_YMD AND SA.PRC_END_YMD -- 가격시작일자
+        LIMIT 1
+    </select>
+    
+    <select id="selectGoodsItemOrgOrderNo" resultType="String">
+        /* q93m9k: 2023-08-21 rst.Rst0002.selectGoodsItemOrgOrderNo 상품정보아이템 - 원거래주문번호 조회 */
+        SELECT 'O' ||
+                H.STR_CD ||               -- 점포코드
+                H.OTRS_SALS_YMD ||        -- 원거래매출일자
+                H.OTRS_POS_NO ||          -- 원거래POS번호
+                H.OTRS_DLNG_NO ||         -- 원거래거래번호
+                #{itemSeq}           -- POS상품등록순서
+                AS orgOrderNo
+          FROM SA_SALS_HDER_P H -- SA_매출_헤더_내역
+         WHERE H.SALS_YMD = #{saleDate}   -- 매출일자
+           AND H.STR_CD   = TRIM(#{storeNo})    -- 점포코드
+           AND H.POS_NO   = #{posNo}      -- POS번호
+           AND H.DLNG_NO  = #{tranNo}     -- 거래번호
+        LIMIT 1
+    </select>
+    
+    <select id="selectGoodsItemEventMngYMEventMngNo" resultType="String">
+        /* q93m9k: 2023-08-21 rst.Rst0002.selectGoodsItemEventMngYMEventMngNo 상품정보아이템 - 행사관리연월, 행사관리번호 조회 */
+        <![CDATA[
+        WITH TMP_SALS_OFLN_ORD AS (
+        /* 단품 정보 */
+        SELECT   TA.STR_CD
+               , TA.MD_CD
+               , TA.CPCO_CD
+               , TA.PIPD_CD
+               , CMM.DLNG_SHPE_CD
+               , CMM.PIPD_DVS_CD
+               , #{saleDate} AS SALS_YMD
+               , #{otrsSalsYmd} AS OTRS_SALS_YMD
+               , #{posNo} AS POS_NO
+               , #{tranNo} AS DLNG_NO
+               , #{evnDvsCd} AS EVN_DVS_CD
+               , #{dcSlrt} AS DCSLRT
+          FROM PR_SHOP_PIPD_M TA -- PR_매장단품_마스터
+         INNER JOIN MT_CMMN_MD_M CMM -- MT_공통MD_마스터
+            ON TA.MD_CD = CMM.MD_CD
+         WHERE 1=1
+           AND TA.STR_CD  = TRIM(#{storeNo})
+           AND TA.MD_CD   = #{mdCd}
+           AND #{otrsSalsYmd} < PDCT_END_YMD
+           AND TA.PIPD_CD = #{pipdCd}
+        UNION ALL
+        /* 비단품 정보*/
+        SELECT   #{storeNo} AS STR_CD
+               , TA.MD_CD
+               , TA.CPCO_CD 
+               , TA.PIPD_CD
+               , CMM.DLNG_SHPE_CD
+               , CMM.PIPD_DVS_CD
+               , #{saleDate} AS SALS_YMD
+               , #{otrsSalsYmd} AS OTRS_SALS_YMD
+               , #{posNo} AS POS_NO
+               , #{tranNo} AS DLNG_NO
+               , #{evnDvsCd} AS EVN_DVS_CD
+               , #{dcSlrt} AS DCSLRT
+          FROM PR_NPPD_INFO_M TA
+         INNER JOIN MT_CMMN_MD_M CMM
+            ON TA.MD_CD = CMM.MD_CD
+         WHERE 1=1
+           AND TA.MD_CD   = #{mdCd}
+           AND TA.PIPD_CD = #{pipdCd}
+        )
+        SELECT CASE SA.PIPD_DVS_CD
+               WHEN '1' THEN IFNULL((SELECT CONCAT(EV.EVN_MNG_YM, EV.EVN_MNG_NO, EV.EVN_THM_TP_CD) AS EVN_ID
+                                       FROM MK_MD_EVN_CFMT_P EV
+                                      WHERE EV.STR_CD      = SA.STR_CD
+                                        AND EV.PIPD_DVS_CD = SA.PIPD_DVS_CD
+                                        AND EV.MD_CD       = SA.MD_CD 
+                                        AND EV.PIPD_CD     = SA.PIPD_CD
+                                        AND EV.CPCO_CD     = SA.CPCO_CD
+                                        AND SA.OTRS_SALS_YMD BETWEEN EV.APY_BGN_YMD AND EV.APY_END_YMD
+                                        AND EV.EVN_DVS_CD  = SA.EVN_DVS_CD
+                                        AND EV.DCSLRT      = SA.DCSLRT
+                                     LIMIT 1
+                                    ),
+                                    (SELECT CONCAT(EP.EVN_MNG_YM, EP.EVN_MNG_NO, SB.EVN_THM_TP_CD) AS EVN_ID
+                                       FROM MK_MD_EVN_PLC_D EP
+                                      INNER JOIN (SELECT   EV.EVN_MNG_YM
+                                                         , EV.EVN_MNG_NO
+                                                         , EV.EVN_THM_TP_CD
+                                                    FROM MK_MD_EVN_CFMT_P EV
+                                                   WHERE EV.STR_CD = SA.STR_CD
+                                                     AND EV.PIPD_DVS_CD = SA.PIPD_DVS_CD
+                                                     AND EV.MD_CD = SA.MD_CD 
+                                                     AND EV.CPCO_CD = SA.CPCO_CD
+                                                     AND SA.OTRS_SALS_YMD BETWEEN EV.APY_BGN_YMD AND EV.APY_END_YMD
+                                                     AND EV.EVN_DVS_CD = SA.EVN_DVS_CD
+                                                     AND EV.DCSLRT = SA.DCSLRT
+                                                  LIMIT 1
+                                                 ) SB
+                                         ON EP.EVN_MNG_YM = SB.EVN_MNG_YM
+                                        AND EP.EVN_MNG_NO = SB.EVN_MNG_NO
+                                      WHERE SA.POS_NO IN (  EP.EVN_POS_NO01
+                                                          , EP.EVN_POS_NO02
+                                                          , EP.EVN_POS_NO03
+                                                          , EP.EVN_POS_NO04
+                                                          , EP.EVN_POS_NO04
+                                                          , EP.EVN_POS_NO05
+                                                          , EP.EVN_POS_NO06
+                                                          , EP.EVN_POS_NO07
+                                                          , EP.EVN_POS_NO08
+                                                          , EP.EVN_POS_NO09
+                                                          , EP.EVN_POS_NO10
+                                                          , EP.EVN_POS_NO11
+                                                          , EP.EVN_POS_NO12
+                                                          , EP.EVN_POS_NO13
+                                                          , EP.EVN_POS_NO14
+                                                          , EP.EVN_POS_NO15
+                                                          , EP.EVN_POS_NO16
+                                                          , EP.EVN_POS_NO17
+                                                          , EP.EVN_POS_NO18
+                                                          , EP.EVN_POS_NO19
+                                                          , EP.EVN_POS_NO20)
+                                     LIMIT 1
+                                    ))
+               WHEN '2' THEN IFNULL((SELECT CONCAT(EP.EVN_MNG_YM, EP.EVN_MNG_NO, SB.EVN_THM_TP_CD) AS EVN_ID
+                                       FROM MK_MD_EVN_PLC_D EP
+                                      INNER JOIN (SELECT   EV.EVN_MNG_YM
+                                                         , EV.EVN_MNG_NO
+                                                         , EV.EVN_THM_TP_CD
+                                                    FROM MK_MD_EVN_CFMT_P EV
+                                                   WHERE EV.STR_CD = SA.STR_CD
+                                                     AND EV.PIPD_DVS_CD = SA.PIPD_DVS_CD
+                                                     AND EV.MD_CD = SA.MD_CD 
+                                                     AND EV.PIPD_CD = SA.PIPD_CD
+                                                     AND EV.CPCO_CD = SA.CPCO_CD
+                                                     AND SA.OTRS_SALS_YMD BETWEEN EV.APY_BGN_YMD AND EV.APY_END_YMD
+                                                  LIMIT 1
+                                                 ) SB
+                                         ON EP.EVN_MNG_YM = SB.EVN_MNG_YM
+                                        AND EP.EVN_MNG_NO = SB.EVN_MNG_NO
+                                      WHERE SA.POS_NO IN (   EP.EVN_POS_NO01
+                                                           , EP.EVN_POS_NO02
+                                                           , EP.EVN_POS_NO03
+                                                           , EP.EVN_POS_NO04
+                                                           , EP.EVN_POS_NO04
+                                                           , EP.EVN_POS_NO05
+                                                           , EP.EVN_POS_NO06
+                                                           , EP.EVN_POS_NO07
+                                                           , EP.EVN_POS_NO08
+                                                           , EP.EVN_POS_NO09
+                                                           , EP.EVN_POS_NO10
+                                                           , EP.EVN_POS_NO11
+                                                           , EP.EVN_POS_NO12
+                                                           , EP.EVN_POS_NO13
+                                                           , EP.EVN_POS_NO14
+                                                           , EP.EVN_POS_NO15
+                                                           , EP.EVN_POS_NO16
+                                                           , EP.EVN_POS_NO17
+                                                           , EP.EVN_POS_NO18
+                                                           , EP.EVN_POS_NO19
+                                                           , EP.EVN_POS_NO20)
+                                     LIMIT 1
+                                    ), 'ERR')
+               WHEN '3' OR '4' tHEN IFNULL((SELECT CONCAT(EV.EVN_MNG_YM, EV.EVN_MNG_NO, EV.EVN_THM_TP_CD) AS EVN_ID
+                                              FROM MK_MD_EVN_CFMT_P EV
+                                             WHERE EV.STR_CD = SA.STR_CD
+                                               AND EV.PIPD_DVS_CD = SA.PIPD_DVS_CD
+                                               AND EV.MD_CD = SA.MD_CD 
+                                               AND EV.PIPD_CD = SA.PIPD_CD
+                                               AND EV.CPCO_CD = SA.CPCO_CD
+                                               AND SA.OTRS_SALS_YMD BETWEEN EV.APY_BGN_YMD AND EV.APY_END_YMD
+                                            LIMIT 1
+                                           ),
+                                           (SELECT CONCAT(EP.EVN_MNG_YM, EP.EVN_MNG_NO, SB.EVN_THM_TP_CD) AS EVN_ID
+                                              FROM MK_MD_EVN_PLC_D EP
+                                             INNER JOIN (SELECT   EV.EVN_MNG_YM
+                                                                , EV.EVN_MNG_NO
+                                                                , EV.EVN_THM_TP_CD
+                                                           FROM MK_MD_EVN_CFMT_P EV
+                                                          WHERE EV.STR_CD = SA.STR_CD
+                                                            AND EV.PIPD_DVS_CD = SA.PIPD_DVS_CD
+                                                            AND EV.MD_CD = SA.MD_CD 
+                                                            AND EV.CPCO_CD = SA.CPCO_CD
+                                                            AND SA.OTRS_SALS_YMD BETWEEN EV.APY_BGN_YMD AND EV.APY_END_YMD
+                                                         LIMIT 1
+                                                        ) SB
+                                                ON EP.EVN_MNG_YM = SB.EVN_MNG_YM
+                                               AND EP.EVN_MNG_NO = SB.EVN_MNG_NO
+                                             WHERE SA.POS_NO IN (  EP.EVN_POS_NO01
+                                                                 , EP.EVN_POS_NO02
+                                                                 , EP.EVN_POS_NO03
+                                                                 , EP.EVN_POS_NO04
+                                                                 , EP.EVN_POS_NO04
+                                                                 , EP.EVN_POS_NO05
+                                                                 , EP.EVN_POS_NO06
+                                                                 , EP.EVN_POS_NO07
+                                                                 , EP.EVN_POS_NO08
+                                                                 , EP.EVN_POS_NO09
+                                                                 , EP.EVN_POS_NO10
+                                                                 , EP.EVN_POS_NO11
+                                                                 , EP.EVN_POS_NO12
+                                                                 , EP.EVN_POS_NO13
+                                                                 , EP.EVN_POS_NO14
+                                                                 , EP.EVN_POS_NO15
+                                                                 , EP.EVN_POS_NO16
+                                                                 , EP.EVN_POS_NO17
+                                                                 , EP.EVN_POS_NO18
+                                                                 , EP.EVN_POS_NO19
+                                                                 , EP.EVN_POS_NO20)
+                                             LIMIT 1
+                                            ))
+            WHEN '0' tHEN IF(SA.DLNG_SHPE_CD <> 0, (SELECT CONCAT(EP.EVN_MNG_YM, EP.EVN_MNG_NO, SB.EVN_THM_TP_CD) AS EVN_ID
+                                                      FROM MK_MD_EVN_PLC_D EP
+                                                     INNER JOIN (SELECT   EV.EVN_MNG_YM
+                                                                        , EV.EVN_MNG_NO
+                                                                        , EV.EVN_THM_TP_CD
+                                                                   FROM MK_MD_EVN_CFMT_P EV
+                                                                  WHERE EV.STR_CD = SA.STR_CD
+                                                                    AND EV.PIPD_DVS_CD = SA.PIPD_DVS_CD
+                                                                    AND EV.MD_CD = SA.MD_CD 
+                                                                    AND EV.CPCO_CD = SA.CPCO_CD
+                                                                    AND SA.OTRS_SALS_YMD BETWEEN EV.APY_BGN_YMD AND EV.APY_END_YMD
+                                                                    AND EV.EVN_DVS_CD = SA.EVN_DVS_CD
+                                                                    AND EV.DCSLRT = SA.DCSLRT
+                                                                 LIMIT 1
+                                                                ) SB
+                                                        ON EP.EVN_MNG_YM = SB.EVN_MNG_YM
+                                                       AND EP.EVN_MNG_NO = SB.EVN_MNG_NO
+                                                    LIMIT 1
+                                                   ),
+                                                   (SELECT CONCAT(EP.EVN_MNG_YM, EP.EVN_MNG_NO, SB.EVN_THM_TP_CD) AS EVN_ID
+                                                      FROM MK_MD_EVN_PLC_D EP
+                                                     INNER JOIN (SELECT  EV.EVN_MNG_YM
+                                                                        , EV.EVN_MNG_NO
+                                                                        , EV.EVN_THM_TP_CD
+                                                                   FROM MK_MD_EVN_CFMT_P EV
+                                                                  WHERE EV.STR_CD = SA.STR_CD
+                                                                    AND EV.PIPD_DVS_CD = SA.PIPD_DVS_CD
+                                                                    AND EV.MD_CD = SA.MD_CD 
+                                                                    AND EV.CPCO_CD = SA.CPCO_CD
+                                                                    AND SA.OTRS_SALS_YMD BETWEEN EV.APY_BGN_YMD AND EV.APY_END_YMD
+                                                                 LIMIT 1
+                                                                ) SB
+                                                        ON EP.EVN_MNG_YM = SB.EVN_MNG_YM
+                                                       AND EP.EVN_MNG_NO = SB.EVN_MNG_NO
+                                                     WHERE SA.POS_NO IN (  EP.EVN_POS_NO01
+                                                                         , EP.EVN_POS_NO02
+                                                                         , EP.EVN_POS_NO03
+                                                                         , EP.EVN_POS_NO04
+                                                                         , EP.EVN_POS_NO04
+                                                                         , EP.EVN_POS_NO05
+                                                                         , EP.EVN_POS_NO06
+                                                                         , EP.EVN_POS_NO07
+                                                                         , EP.EVN_POS_NO08
+                                                                         , EP.EVN_POS_NO09
+                                                                         , EP.EVN_POS_NO10
+                                                                         , EP.EVN_POS_NO11
+                                                                         , EP.EVN_POS_NO12
+                                                                         , EP.EVN_POS_NO13
+                                                                         , EP.EVN_POS_NO14
+                                                                         , EP.EVN_POS_NO15
+                                                                         , EP.EVN_POS_NO16
+                                                                         , EP.EVN_POS_NO17
+                                                                         , EP.EVN_POS_NO18
+                                                                         , EP.EVN_POS_NO19
+                                                                         , EP.EVN_POS_NO20)
+                                                    LIMIT 1
+                                                   )
+                            )   
+                          ELSE IFNULL((SELECT CONCAT(EP.EVN_MNG_YM, EP.EVN_MNG_NO, SB.EVN_THM_TP_CD) AS EVN_ID
+                                         FROM MK_MD_EVN_PLC_D EP
+                                        INNER JOIN (SELECT   EV.EVN_MNG_YM
+                                                           , EV.EVN_MNG_NO
+                                                           , EV.EVN_THM_TP_CD
+                                                      FROM MK_MD_EVN_CFMT_P EV
+                                                     WHERE EV.STR_CD = SA.STR_CD
+                                                       AND EV.PIPD_DVS_CD = SA.PIPD_DVS_CD
+                                                       AND EV.MD_CD = SA.MD_CD 
+                                                       AND EV.CPCO_CD = SA.CPCO_CD
+                                                       AND SA.OTRS_SALS_YMD BETWEEN EV.APY_BGN_YMD AND EV.APY_END_YMD
+                                                    LIMIT 1
+                                                   ) SB
+                                           ON EP.EVN_MNG_YM = SB.EVN_MNG_YM
+                                          AND EP.EVN_MNG_NO = SB.EVN_MNG_NO
+                                        WHERE SA.POS_NO IN (  EP.EVN_POS_NO01
+                                                            , EP.EVN_POS_NO02
+                                                            , EP.EVN_POS_NO03
+                                                            , EP.EVN_POS_NO04
+                                                            , EP.EVN_POS_NO04
+                                                            , EP.EVN_POS_NO05
+                                                            , EP.EVN_POS_NO06
+                                                            , EP.EVN_POS_NO07
+                                                            , EP.EVN_POS_NO08
+                                                            , EP.EVN_POS_NO09
+                                                            , EP.EVN_POS_NO10
+                                                            , EP.EVN_POS_NO11
+                                                            , EP.EVN_POS_NO12
+                                                            , EP.EVN_POS_NO13
+                                                            , EP.EVN_POS_NO14
+                                                            , EP.EVN_POS_NO15
+                                                            , EP.EVN_POS_NO16
+                                                            , EP.EVN_POS_NO17
+                                                            , EP.EVN_POS_NO18
+                                                            , EP.EVN_POS_NO19
+                                                            , EP.EVN_POS_NO20)
+                                       LIMIT 1), 'ERR') END AS EVN_ID
+          FROM TMP_SALS_OFLN_ORD SA
+        ]]>
+    </select>
+    
+    <select id="selectCCFreeSetItemShopCode" resultType="String">
+        /* q93m9k: 2023-08-21 rst.Rst0002.selectCCFreeSetItemShopCode 시코르 증정/SET 아이템 - 매장코드 조회 */
+        SELECT SHOP_CD AS shopCode       -- 매장코드
+          FROM PR_SHOP_PIPD_M            -- PR_매장단품_마스터
+         WHERE STR_CD  = TRIM(#{storeNo}) -- 점포코드
+           AND PIPD_CD = TRIM(#{pluCode}) -- 단품코드
+        LIMIT 1
+    </select>
+    
+    <select id="selectTranCashTerAmtItemDXShopCd" resultType="String">
+        /* q93m9k: 2023-08-21 rst.Rst0002.selectTranCashTerAmtItemDXShopCd 캐쉬터미널 연동 POS 입출금 거래 금액 정보 아이템 - 매장코드 조회 */
+        SELECT IF(#{pluType} = '0', -- 단품구분코드 (통합코드)
+                  (SELECT A.SHOP_CD -- 매장코드
+                     FROM MT_SHOP_M$ A -- MT_매장_마스터
+                    INNER JOIN (SELECT  STR_CD -- 점포코드
+                                       ,SHOP_CD -- 매장코드
+                                  FROM MT_SHOP_MD_M -- MT_매장MD_마스터
+                                 WHERE 1=1
+                                   AND STR_CD = TRIM(#{storeNo}) -- 점포코드
+                                   AND MD_CD  = SUBSTR(#{prodCode}, 1, 6) -- MD코드
+                                   AND DATE_FORMAT(CURDATE(), '%Y%m%d') BETWEEN MD_BGN_YMD AND MD_END_YMD -- 매장이동시 이동전매장MD의 종료일자를 종료처리 함
+                                LIMIT 1
+                                ) B
+                       ON A.STR_CD  = B.STR_CD
+                      AND A.SHOP_CD = B.SHOP_CD
+                  ),
+                  (SELECT SHOP_CD -- 매장코드
+                     FROM PR_SHOP_PIPD_M -- PR_매장단품_마스터
+                    WHERE STR_CD  = TRIM(#{storeNo}) -- 점포코드
+                      AND PIPD_CD = #{prodCode} -- 단품코드
+                   LIMIT 1
+                  )
+                 )
+          FROM DUAL
+    </select>
+    
+    <select id="selectDmsItemCpCd" resultType="String">
+        /* q93m9k: 2023-08-21 rst.Rst0002.selectDmsItemCpCd NEW DMS ITEM - 쿠폰코드 조회 */
+        SELECT CPD.CPN_CD AS cpCd -- 쿠폰코드
+          FROM MK_DCNT_EVN_CPN_D CPD -- MK_할인행사쿠폰_상세
+         WHERE CPD.EVN_MNG_YM  = #{enuriEvtYm}
+           AND CPD.EVN_MNG_NO  = TRIM(#{enuriEvtNo})
+        LIMIT 1
+    </select>
+    
+    <resultMap id="selectDmsItemcpIssNo" type="Map">
+        <result column="dpstrEvnCpnNo" property="dpstrEvnCpnNo" />
+        <result column="nrmCpnDcrt"    property="nrmCpnDcrt" javaType="int" />
+        <result column="evnCpnDcrt"    property="evnCpnDcrt" javaType="int" />
+    </resultMap>
+    <select id="selectDmsItemcpIssNo" resultMap="selectDmsItemcpIssNo">
+        /* q93m9k: 2023-08-21 rst.Rst0002.selectDmsItemcpIssNo NEW DMS ITEM - 쿠폰/할인권 발급 번호 조회 */
+        SELECT  CISS.DPSTR_EVN_CPN_NO AS dpstrEvnCpnNo -- 백화점행사쿠폰번호
+               ,CAST(CISS.NRM_CPN_DCRT AS unsigned integer) AS nrmCpnDcrt -- 정상쿠폰할인율
+               ,CAST(CISS.EVN_CPN_DCRT AS unsigned integer) AS evnCpnDcrt -- 행사쿠폰할인율
+          FROM MK_CPN_ISSU_P CISS -- MK_쿠폰발급_내역
+         WHERE CISS.CST_ID       = TRIM(#{custId})   -- 고객번호
+           AND CISS.CPN_ISSU_SNO = #{cpIssNo} -- 쿠폰/할인권 발급 번호
+        LIMIT 1
+    </select>
+    
+    <select id="selectDmsItemcpCaclValidDate" resultType="String">
+        /* q93m9k: 2023-08-21 rst.Rst0002.selectDmsItemcpCaclValidDate NEW DMS ITEM - 쿠폰/할인권 발급 취소유효기간 조회 */
+        SELECT SHD.EVN_CNCL_TMLM_YMD AS cpCaclValidDate /* 행사취소기한일자 */
+          FROM MK_EVN_CPN_M CPM /* MK_행사쿠폰_마스터 */
+         INNER JOIN MK_EVN_CPN_JNT_SLPM_SHRT_D SHD /* MK_행사쿠폰공동판촉분담율_상세 */
+            ON CPM.CPN_PLCY_NO    = SHD.CPN_PLCY_NO
+           AND CPM.CPN_CD         = TRIM(#{cpnCd}) /* 쿠폰코드 조회쿼리 수행후 파라미터 세팅 */
+        LIMIT 1
+    </select>
+    
+    <select id="selectTranCardIcItemItemListCode" resultType="String">
+        /* q93m9k: 2023-08-21 rst.Rst0002.selectTranCardIcItemItemListCode 신용카드(IC) 아이템 - 상품코드 조회 */
+        SELECT CONCAT(SUBSTR(#{code}, 1, 12), PDCT_CL_CD) -- 상품분류코드(6)
+          FROM MT_PDCT_CL_M -- MT_상품분류_마스터
+         WHERE 1=1
+           AND PDCT_CL_SHT_CD = SUBSTR(#{code}, 13, 4) -- 상품분류단축코드(4)
+        LIMIT 1
+    </select>
+    
+    <select id="selectTranCardIcItemItemListBizRelmCd" resultType="String">
+        /* q93m9k: 2023-08-21 rst.Rst0002.selectTranCardIcItemItemListBizRelmCd 신용카드(IC) 아이템 - 사업영역코드 조회 */
+        SELECT A.BIZ_RELM_CD -- 사업영역코드
+          FROM MT_SHOP_M$ A -- MT_매장_마스터
+         INNER JOIN (SELECT  STR_CD -- 점포코드
+                            ,SHOP_CD -- 매장코드
+                       FROM MT_SHOP_MD_M -- MT_매장MD_마스터
+                      WHERE 1=1
+                        AND STR_CD = TRIM(#{storeNo}) -- 점포코드
+                        AND MD_CD  = SUBSTR(#{code}, 1, 6) -- MD코드
+                        AND DATE_FORMAT(CURDATE(), '%Y%m%d') BETWEEN MD_BGN_YMD AND MD_END_YMD -- 매장이동시 이동전매장MD의 종료일자를 종료처리 함
+                     LIMIT 1
+                    ) B
+            ON A.STR_CD  = B.STR_CD
+           AND A.SHOP_CD = B.SHOP_CD
+    </select>
+    
+    <insert id="mergeTTRLOG_O">
+        /* q93m9k: 2023-08-21 rst.Rst0002.mergeTTRLOG_O 구 거래전문 데이터 등록 */
+        INSERT INTO TTRLOG_O
+        (  SALE_DATE    
+         , STORE_CODE   
+         , POS_NO       
+         , TRAN_NO      
+         , SEQ_NO       
+         , SYS_DATE     
+         , SYS_TIME     
+         , RET_FLAG     
+         , TRAN_ENC_YN  
+         , TRAN_DATA    
+         , TRAN_DATA_ENC
+         , TRAN_PROC_FG 
+         , TRAN_PROC_DT 
+        )
+        VALUES
+        (  #{saleDate}
+         , #{storeNo}
+         , #{posNo}
+         , #{tranNo}
+         , #{seqNo, jdbcType=INTEGER}
+         , DATE_FORMAT(CURDATE(), '%Y%m%d')
+         , DATE_FORMAT(CURTIME(), '%H%i%s')
+         , '0'
+         , 'Y'
+         , #{tranData}
+         , #{tranDataEnc}
+         , #{tranProcFg} -- 실시간 거래 기본 2
+         , NULL
+        )
+        ON DUPLICATE KEY UPDATE
+           SYS_DATE      = DATE_FORMAT(CURDATE(), '%Y%m%d')
+         , SYS_TIME      = DATE_FORMAT(CURTIME(), '%H%i%s')
+         , TRAN_DATA     = #{tranData}
+         , TRAN_DATA_ENC = #{tranDataEnc}
+         , TRAN_PROC_FG  = #{tranProcFg}
+    </insert>
+    
+    <update id="updateTTRLOG_O">
+        /* q93m9k: 2023-08-21 rst.Rst0002.updateTTRLOG_O 구트란 처리플래그 업데이트 */
+        UPDATE TTRLOG_O SET   TRAN_PROC_FG = #{tranProcFg , jdbcType=VARCHAR}
+                            , TRAN_DATA_ENC = IF(TRAN_DATA_ENC IS NULL OR TRAN_DATA_ENC = '',  #{logMsg, jdbcType=VARCHAR}, CONCAT(TRAN_DATA_ENC, ", ", #{logMsg, jdbcType=VARCHAR}))
+         WHERE 1=1
+           AND SALE_DATE    = #{saleDate    , jdbcType=VARCHAR}
+           AND STORE_CODE   = #{storeCode   , jdbcType=VARCHAR}
+           AND POS_NO       = #{posNo       , jdbcType=VARCHAR}
+           AND TRAN_NO      = #{tranNo      , jdbcType=VARCHAR}
+    </update>
+    
+    <!--
+    ==================================================================================================
+    = 90일 사전 이행 처리용
+    ==================================================================================================
+    -->
+        
+    <insert id="mergePreMigSC_SALS_TRAN_G" parameterType="com.shinsegae.ssgdx.rst.model.oldtr.TtrlogO">
+        /* q93m9k: 2023-08-21 rst.Rst0002.mergePreMigSC_SALS_TRAN_G$ 구 거래전문 데이터 신 매출수집 TRAN_전문 등록 */
+        INSERT INTO SC_SALS_TRAN_G$
+        (  SALS_YMD               -- 매출일자
+         , STR_CD                 -- 점포코드
+         , POS_NO                 -- POS번호
+         , DLNG_NO                -- 거래번호
+         -- , REG_DTM                -- 등록일시 -- default
+         , REGR_ID                -- 등록자ID
+         -- , UPD_DTM                -- 수정일시 -- default
+         , UPDR_ID                -- 수정자ID
+         , WRK_SNO                -- 작업일련번호
+         , STR_SRVR_TGRM_TRMS_YMD -- 점포서버전문전송일자
+         , STR_SRVR_TGRM_TRMS_TM  -- 점포서버전문전송시각
+         , RTPD_DVS_CD            -- 반품구분코드
+         , TGRM_ENCPT_YN          -- 전문암호화여부
+         , DLNG_TGRM_CNTN         -- 거래전문내용
+         , ENCPT_DLNG_TGRM_CNTN   -- 암호화거래전문내용
+        )
+        VALUES
+        (  #{saleDate}
+         , #{storeCode}
+         , #{posNo}
+         , #{tranNo}
+         , 'SalsClc'
+         , 'SalsClc'
+         , #{seqNo, jdbcType=BIGINT}
+         , #{entDate}
+         , #{entTime}
+         , #{retFlag}
+         , #{tranEncYn}
+         , ''
+         , #{tranDataEnc}
+        )
+        ON DUPLICATE KEY UPDATE
+           WRK_SNO                  = #{seqNo, jdbcType=BIGINT}
+         , STR_SRVR_TGRM_TRMS_YMD = #{entDate}
+         , STR_SRVR_TGRM_TRMS_TM  = #{entTime}
+         , RTPD_DVS_CD            = #{retFlag}
+         , TGRM_ENCPT_YN          = #{tranEncYn}
+         , ENCPT_DLNG_TGRM_CNTN   = #{tranDataEnc}
+    </insert>
+    
+    <update id="updatePreMigTTRLOG_O" parameterType="com.shinsegae.ssgdx.rst.model.oldtr.TtrlogO">
+        /* q93m9k: 2023-08-21 rst.Rst0002.updatePreMigTTRLOG_O 구트란 처리플래그 업데이트 */
+        UPDATE TTRLOG_O
+           SET  TRAN_PROC_FG = #{tranProcFg , jdbcType=VARCHAR} -- 성공 1, 실패 9
+               ,TRAN_PROC_DT = now()
+         WHERE 1=1
+           AND SALE_DATE    = #{saleDate    , jdbcType=VARCHAR}
+           AND STORE_CODE   = #{storeCode   , jdbcType=VARCHAR}
+           AND POS_NO       = #{posNo       , jdbcType=VARCHAR}
+           AND TRAN_NO      = #{tranNo      , jdbcType=VARCHAR}
+    </update>
+    
+    <update id="updatePreMigTranEncTTRLOG_O">
+        /* q93m9k: 2023-08-21 rst.Rst0002.updatePreMigTranEncTTRLOG_O 구트란 거래전문 암호화 업데이트 */
+        UPDATE TTRLOG_O SET   TRAN_PROC_FG  = #{tranProcFg , jdbcType=VARCHAR}
+                            -- , TRAN_DATA     = '' -- 암호화 저장시 평문은 빈문자 처리
+                            , TRAN_DATA_ENC = #{tranDataEnc, jdbcType=VARCHAR}
+         WHERE 1=1
+           AND SALE_DATE    = #{saleDate    , jdbcType=VARCHAR}
+           AND STORE_CODE   = #{storeCode   , jdbcType=VARCHAR}
+           AND POS_NO       = #{posNo       , jdbcType=VARCHAR}
+           AND TRAN_NO      = #{tranNo      , jdbcType=VARCHAR}
+    </update>
+</mapper>

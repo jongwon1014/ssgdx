@@ -1,0 +1,17 @@
+rootProject.name = 'ssgdx-rst'
+
+
+
+def includeModuleMode = settings.hasProperty('includeModule')? settings.getProperty('includeModule'):'none';
+println 'Setting includeModule=' + includeModuleMode
+
+if(includeModuleMode  == "debug") {
+    def rootProjectDir = rootProject.getProjectDir().toString()
+    def projectPath = rootProjectDir.substring(0, rootProjectDir.indexOf(rootProject.name))
+    println "projectPath : >> " + projectPath
+    println 'Setting includeModule=debug >> include modules as dependency project......'
+    println 'include ssgdx-core '
+    
+    include 'ssgdx-core'
+    project(':ssgdx-core').setProjectDir( file(projectPath + "ssgdx-mds-foundation/ssgdx-core") ) 
+}

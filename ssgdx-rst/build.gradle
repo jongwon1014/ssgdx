@@ -1,0 +1,300 @@
+/***********************************************************************************
+ * 빌드 공통 설정
+ ***********************************************************************************/
+buildscript {
+    ext {
+        profile = project.hasProperty('profile') ? project.getProperty('profile') : 'local'
+        includeModule = (project.hasProperty('includeModule')? project.getProperty('includeModule'):'none') == "debug"
+        moduleVersion = "${projectVersion}" + '_' + new Date().format('yyyyMMddHHmm')
+    }
+
+    repositories {
+        maven {
+            url 'http://100.67.2.71:8081/repository/ssgdx-libs/'
+            allowInsecureProtocol true
+            credentials {
+                username nexusUsername
+                password nexusPassword
+            }
+        }
+    }
+
+    dependencies {
+        classpath "io.spring.gradle:dependency-management-plugin:${dependencyManagementVersion}"
+        classpath "org.springframework.boot:spring-boot-gradle-plugin:${springbootVersion}"
+    }
+
+}
+
+/***********************************************************************************
+ * 플러그인 설정
+ ***********************************************************************************/
+plugins {
+  id "org.sonarqube" version "3.0"
+}
+apply plugin: 'org.springframework.boot'
+apply plugin: 'io.spring.dependency-management'
+apply plugin: 'java'
+
+
+/***********************************************************************************
+ * 의존 라이브러리
+ ***********************************************************************************/
+dependencyManagement {
+    imports {
+        mavenBom "devon.boot:devon-boot-dependencies:${devonBootVersion}"
+        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+        mavenBom "io.awspring.cloud:spring-cloud-aws-dependencies:${awspringVersion}"
+    }
+}
+
+/***********************************************************************************
+ * 현재 어플리케이션 설정
+ ***********************************************************************************/
+//어플리케이션 기본정보
+group       = "${projectGroup}"
+if("${profile}" == "local" || "${profile}" == "default") {
+    version = "${moduleVersion}"
+} else {
+    version = ""
+}
+description = project.name
+
+java{
+  sourceCompatibility = JavaVersion.VERSION_11
+  targetCompatibility = JavaVersion.VERSION_11
+}  
+
+//소스 정보
+compileJava.options.encoding = "UTF-8"
+compileTestJava.options.encoding = "UTF-8"
+
+springBoot {
+    mainClass = getBootMainClassName(project.group, project.name)
+    println "configuring springboot application main class name : " + getBootMainClassName(project.group, rootProject.name)
+}
+
+repositories {   
+    maven {
+        url 'http://100.67.2.71:8081/repository/ssgdx-libs/'
+        allowInsecureProtocol true
+        credentials {
+            username nexusUsername
+            password nexusPassword
+        }
+    }
+}
+
+/***********************************************************************************
+ * lombok사용을 위한 설정
+ ***********************************************************************************/
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+}
+
+configurations.all {
+    exclude group: 'org.springframework.boot', module: 'spring-boot-starter-logging'
+    exclude group: 'org.apache.tiles', module: 'tiles-freemaker'
+    exclude group: 'rhino', module: 'js'
+//    exclude group: 'javax.xml.stream', module: 'stax-api'
+}
+
+dependencies {
+    // ssgdx core
+    if(project.includeModule){
+        println('ssgdx-core implements as a reference project')
+        implementation project(':ssgdx-core')
+    } else {
+        println('ssgdx-core implements as a reference library')
+        implementation("com.shinsegae.ssgdx:ssgdx-core:${ssgdxCoreVersion}"){ changing = true }
+    }
+    implementation "com.shinsegae.ssgdx:ssgdx-boot-autoconfigure:${ssgdxCoreVersion}" 
+    
+    // lombok
+    compileOnly "org.projectlombok:lombok"
+    testImplementation "org.projectlombok:lombok"
+    annotationProcessor "org.projectlombok:lombok"
+    testAnnotationProcessor "org.projectlombok:lombok"
+
+    // devon
+    implementation 'devon.boot:devon-boot-starter'
+    implementation 'devon.boot:devon-boot-starter-log4j2'
+    implementation 'devonframe:devon-batch-core'
+    implementation('devonframe:devon-core') {
+        exclude group : 'org.apache.commons' , module:'commons-configuration2'
+    }
+    implementation "org.apache.commons:commons-configuration2:${commonsConfigurations2version}"
+	
+	// lena
+	implementation ("lena:lena-embed-core:${lenaVersion}"){
+		exclude group: 'org.apache.tomcat.embed' , module: 'tomcat-embed-core'		
+		exclude group: 'org.apache.tomcat.embed' , module: 'tomcat-embed-el'		
+        exclude group: 'org.apache.tomcat.embed' , module: 'tomcat-embed-jasper'	
+        exclude group: 'org.apache.tomcat.embed' , module: 'tomcat-embed-websocket'
+        exclude group: 'lena' ,                    module: 'zodiac-cluster3'		
+        exclude group: 'lena' ,                    module: 'lena-common'			
+        exclude group: 'lena' ,                    module: 'lena-license-common'	
+        exclude group: 'lena' ,                    module: 'lena-core3'			
+	}
+	compileOnly 'lena:lena-advertiser:1.3.2c'
+	
+    // spring
+    implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
+    implementation 'org.springframework.boot:spring-boot-starter-cache'
+    annotationProcessor "org.springframework.boot:spring-boot-configuration-processor"
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+    implementation "org.springframework.session:spring-session-data-redis:${springSessionRedisVersion}"
+    
+    // db
+    implementation "software.aws.rds:aws-mysql-jdbc:${awsMysqlConnectorVersion}"
+    
+    // hikaricp
+    implementation "com.zaxxer:HikariCP:${hikaricpVersion}"
+
+    // test
+    implementation 'org.springframework.boot:spring-boot-starter-test'
+
+    // xml
+    implementation 'org.springframework:spring-oxm'
+    implementation "com.thoughtworks.xstream:xstream:${xstreamVersion}"
+
+    // nets sso
+    implementation "nets:net-agent-core:${netAgentCoreVersion}"
+
+    // inzent eai
+    implementation "inzent:eCross-ClientStub-4.3:${inzentEcrossClientVersion}"
+
+    // guava
+    implementation "com.google.guava:guava:${guavaVersion}"
+
+    // log4j2-jdbc
+    implementation "org.bgee.log4jdbc-log4j2:log4jdbc-log4j2-jdbc4.1:1.16"
+
+    // aws sdk v2
+    implementation "software.amazon.awssdk:s3:${awssdkV2Version}"
+    implementation "software.amazon.awssdk:sns:${awssdkV2Version}"
+
+    // secrets manager
+    implementation "software.amazon.awssdk:secretsmanager:${awssdkV2Version}"
+    implementation "org.springframework.cloud:spring-cloud-starter-aws-secrets-manager-config:${secretsManagerConfigVersion}"
+    implementation "com.amazonaws.secretsmanager:aws-secretsmanager-jdbc:${secretsManagerJdbcVersion}"
+
+    // spring cloud aws
+    implementation 'io.awspring.cloud:spring-cloud-starter-aws'
+    implementation 'io.awspring.cloud:spring-cloud-aws-autoconfigure'
+    implementation 'io.awspring.cloud:spring-cloud-starter-aws-messaging'
+
+    // CubeOne
+    implementation "com.cubeone:CubeOneAPI:${cubeOneVersion}"
+
+    // SEED
+    implementation "com.shinsegae:SEED:${seedVersion}"
+
+    // jackson
+    implementation "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:${jacksonBomVersion}"
+    implementation "com.google.code.findbugs:jsr305:${googleJsr305Version}"
+
+    // JAXB
+    implementation "com.sun.xml.bind:jaxb-core:${jaxbCoreVersion}"
+    implementation "com.sun.xml.bind:jaxb-impl:${jaxbImplVersion}"
+
+    // jasypt
+    implementation "com.github.ulisesbocchio:jasypt-spring-boot-starter:${jasyptVersion}"
+    
+    // jsch
+    implementation "com.jcraft:jsch:${jschVersion}"
+
+    // pdf converter
+    implementation "fr.opensagres.xdocreport:fr.opensagres.poi.xwpf.converter.pdf:${xdocreportVersion}"
+            
+    
+    // simple json
+    implementation "com.googlecode.json-simple:json-simple:${jsonSimpleVersion}"
+
+    // Apache Client5 for Feign
+    implementation "io.github.openfeign:feign-hc5:${apacheClient5Version}"
+
+    // oz scheduler
+    implementation "com.oz:ozsfw:${ozsfwVersion}"
+    
+    // caffeine cache
+    implementation 'com.github.ben-manes.caffeine:caffeine'
+
+    // datadog tracer
+    implementation "io.opentracing:opentracing-api:${openTracingVersion}"
+    implementation "io.opentracing:opentracing-util:${openTracingVersion}"
+    implementation "com.datadoghq:dd-trace-api:${ddTraceApiVersion}"
+
+    implementation("com.nexacro:uiadapter-spring-core:${uiadaptorVersion}") {
+        exclude group: 'org.springframework', module: 'spring-webmvc'
+        exclude group: 'org.slf4j', module: 'slf4j-api'
+        exclude group: 'ch.qos.logback', module: 'logback-classic'
+    }
+    
+    // Legacy DMS IRT 공통 모듈 추가
+    implementation 'com.shinsegae.ssgdx:ssgdx-ldi:latest.integration'
+    //implementation fileTree(dir: 'C:/ssgdx-develop/repository/ssgdx-ldi/build/libs', includes: ['*.jar'])
+    
+    // 각 주제영역 라이브러리 추가
+    implementation "com.shinsegae.ssgdx:ssgdx-mds-common-api:${ssgdxMdsCommonVersion}"
+}
+
+/***********************************************************************************
+ * Task : 기본
+ ***********************************************************************************/
+//boot-run
+bootRun {
+    doFirst {
+        jvmArgs =["-Djava.net.preferIPv4Stack=true"]
+    }
+    logger.lifecycle("jvmArgs={}", jvmArgs)
+}
+
+/***********************************************************************************
+ * Task : 추가
+ ***********************************************************************************/
+//Local Eclipse 기동 설정
+//eclipse {
+//    classpath {
+//        downloadSources = true
+//        downloadJavadoc = true
+//        defaultOutputDir = file("${buildDir}/classes/java/main")
+//    }
+//}
+
+configurations {
+    //devtools
+    developmentOnly
+    runtimeClasspath {
+        extendsFrom developmentOnly
+    }
+    //Library Cache
+    all {
+        resolutionStrategy.cacheChangingModulesFor 0, "seconds"
+        resolutionStrategy {}
+    }
+}
+
+//기존 빌드 산출물 제거
+//[distZip, distTar, bootDistTar, bootDistZip].each { task ->
+//    configurations.archives.artifacts.removeAll {
+//        it.type == "zip" || it.type == "tar"
+//    }
+//    task.enabled = false
+//}
+
+//Test
+test {
+    useJUnitPlatform()
+}
+
+def toCamelCase( String text, boolean capitalized = false ) {
+    text = text.replaceAll( "(_|-)([A-Za-z0-9])", { Object[] it -> it[2].toUpperCase() } )
+    capitalized ? text.toUpperCase().substring(0,1) + text.substring(1) : text
+}
+
+def getBootMainClassName(String groupName, String projectName) {
+    return groupName + "." + toCamelCase(projectName,true) + "Application"
+}

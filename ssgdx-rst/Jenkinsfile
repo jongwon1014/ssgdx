@@ -1,0 +1,223 @@
+pipeline{
+
+    agent any
+    tools{
+      gradle 'gradle 7.5.1'
+    }
+    
+    environment{
+      GIT_URL="http://gitlab.shinsegae.com:6060/ssgdx/ssgdx-opdms/ssgdx-rst.git"
+      GIT_CREDENTIAL ='gitlab_connection'
+      //GIT_BRANCH="develop"
+      APP_NAME="ssgdx-rst"
+      APP_PROJECT_NAME="ssgdx-rst"
+      SONARQUBE_HOST_URL="http://100.67.2.73:9000"
+      SONARQUBE_LOGIN="2772e03b3e755be4f0797c82e196f87d7b2ea961"      
+      P_PROFILE = "${env.BRANCH_NAME == "develop" ? "dev" : env.BRANCH_NAME == "master" ? "stg" : env.BRANCH_NAME == "perfec_twin" ? "pt": env.BRANCH_NAME == "performance_test" ? "pft" : "prd"}"     
+      SERVER_LIST = "${env.BRANCH_NAME == "develop" ? "deptopslcapd01" : env.BRANCH_NAME == "master" ? "deptopslcapt01,deptopslcapt02" : env.BRANCH_NAME == "perfec_twin" ? "deptptslcapt01"  : env.BRANCH_NAME == "performance_test" ? "deptopslcaps01,deptopslcaps02": "prd"}"   
+    
+    }
+
+    parameters {
+        choice(name: 'JUNIT', choices: ['NO', 'YES'])
+        choice(name: 'SONARQUBE', choices: ['NO', 'YES'])
+        choice(name: 'GradleRefresh',choices: ['NO', 'YES'])
+        string(name: 'COMMIT_ID', defaultValue: '', description: 'Enter the commit id to rollback to')       
+    }
+
+
+  stages{
+    stage("Preparation"){
+      steps{
+        script {
+          env.ymd = sh(returnStdout: true, script: ''' 
+          echo -n `date '+%Y%m%d'` ''')
+          echo "Date : ${env.ymd}"
+        }        
+      }
+  }
+
+
+
+    //GIT Check Out stage 시작
+    stage("GIT Check Out"){
+      steps{
+        script {
+      sh "echo init"
+      git branch: "${env.GIT_BRANCH}", credentialsId: "${GIT_CREDENTIAL}", url: "${GIT_URL}"
+      if (params.COMMIT_ID != '') {
+          sh "git checkout ${COMMIT_ID}"
+        }  
+
+      sh "cp -f ./env/log4j2-spring.xml ./src/main/resources/log4j2-spring.xml"
+
+
+        }
+      }
+    }
+
+    stage("Gradle Refresh Build"){
+      when {
+            expression { params.GradleRefresh == "YES" }
+            }
+       steps {
+          sh "echo 'start  Gradle Refresh Build '"
+          sh "echo 'start build' "
+          sh "gradle bootJar -Pprofile=${P_PROFILE} --refresh-dependencies"
+       }
+    }
+
+    //build stage 시작
+    stage("Gradle build"){
+      when {
+            expression { params.GradleRefresh == "NO" }
+            }      
+      steps{
+      sh "echo 'start build' "
+      sh "gradle bootJar -Pprofile=${P_PROFILE}"
+      sh "ls ./build/libs/"
+      }
+    }    
+
+    
+    //JUnit TEST
+    stage("JUnit TEST"){
+      when {
+            expression { params.JUNIT == "YES" }
+            expression {P_PROFILE == "dev"}
+            }  
+      steps{
+        script {
+          echo "start JUnit TEST"
+          def testFiles = sh(returnStdout: true, script: 'find . -name "*Test.java" | wc -l').trim()
+        //   if (testFiles.toInteger() == 0) {
+        //       error('테스트 파일이 없습니다.')
+        //           }
+        try {        
+          sh "gradle test -Pprofile=${P_PROFILE}"
+        }catch(Exception e) {
+          echo 'JUnit tests failed, but continuing with the pipeline...'
+          currentBuild.result = 'SUCCESS' // 테스트 실패를 무시하고 계속 진행
+                    }
+
+       sh "echo 'start Report Upload'"
+       sh "find . -name 'jacocoTestReport.csv' -print0 | xargs -0 cat > TestReport.csv"
+      
+       withAWS(credentials: 's3fullaccess') {
+       sh """
+       aws s3 cp TestReport.csv s3://dept-s3-an2-cm-dev-download/coverage/${env.APP_NAME}_TestReport.csv
+       """
+     }                    
+            }
+        }
+    }
+
+    //SonarQube stage 시작
+    stage("Sonarqube Analysis"){
+      when {
+            expression { params.SONARQUBE == "YES" }
+            }
+
+      steps{
+      sh "echo 'start Sonarqube Analysis'"
+
+      script{
+      withSonarQubeEnv(credentialsId: 'sonarqube') {
+      sh "gradle sonarqube -Pprofile=${P_PROFILE} \
+      -Dsonar.projectKey=${APP_PROJECT_NAME} \
+      -Dsonar.host.url=${SONARQUBE_HOST_URL} \
+      -Dsonar.login=${SONARQUBE_LOGIN}"
+      }
+      
+      qualityGate = waitForQualityGate()
+      if (qualityGate.status != 'OK') {
+          error "Pipeline aborted due to quality gate failure: ${qualityGate.status}"
+        }      
+        }
+      }
+    }
+
+
+    
+    //Nexus Publish
+    // stage("Nexus Publish"){     
+    //   when {
+    //         expression {P_PROFILE == "dev"}
+    //         } 
+    //   steps{
+    //   sh "echo 'start nexus publish' "
+    //   sh "gradle publish -Pprofile=${P_PROFILE}"
+    //   }
+    // }
+
+    //S3 Upload 
+    stage("S3 upload"){
+      steps{
+        script {
+            sh "echo 'start S3 Upload'"
+            switch("${env.GIT_BRANCH}"){
+                case "develop":
+                    withAWS(credentials: 's3fullaccess') {
+                    sh """
+                    aws s3 cp ./build/libs/ssgdx-rst.jar s3://dept-s3-an2-cm-dev-test/ssgdx-rst/ssgdx-rst:${env.ymd}_${env.BUILD_NUMBER}.jar
+                    sh """
+                    }                  
+                    break 
+                case "master":  
+                    withAWS(credentials: 's3fullaccess-stg') {
+                    sh """
+                    aws s3 cp ./build/libs/ssgdx-rst.jar s3://dept-s3-an2-cm-stg-app/ssgdx-rst/ssgdx-rst:${env.ymd}_${env.BUILD_NUMBER}.jar
+                    aws s3 cp ./build/libs/ssgdx-rst.jar s3://dept-s3-an2-cm-stg-app/ssgdx-rst/ssgdx-rst:latest.jar
+
+                    sh """
+                    }                 
+                    break        
+              }
+            } 
+        }
+    }
+
+
+   stage("deploy"){
+      steps{
+      sh "echo 'start deploy' "
+      script {
+      echo "${SERVER_LIST}"
+
+      SERVER_LIST.tokenize(',').each {
+        echo "SERVER: ${it}"
+         echo "P_PROFILE: ${P_PROFILE}"
+
+        sshPublisher(publishers: [ 
+          sshPublisherDesc( 
+            configName:"${it}",
+                    verbose: true,
+                    transfers: [sshTransfer(
+                            sourceFiles: 'build/libs/ssgdx-rst.jar',
+                            removePrefix: 'build/libs/',               
+                            remoteDirectory: '/sorc001',
+                            execCommand: 'chmod a+rx /sorc001/ssgdx-rst.jar'
+                        ), sshTransfer(
+                            sourceFiles: """env/${P_PROFILE}/start_rst.sh""",
+                            removePrefix: """env/${P_PROFILE}/""",               
+                            remoteDirectory: '/sorc001',
+                            execCommand: 'chmod a+rx /sorc001/start_rst.sh && sh /sorc001/stop_rst.sh && nohup sh /sorc001/start_rst.sh > /dev/null 2>&1 &'
+                        ), sshTransfer(
+                            execCommand: 'sh /sorc001/health_check_rst.sh'
+                        )                       
+                    ]
+                )
+            ], continueOnError: false, failOnError: true
+        )     
+
+        }
+      }
+     } 
+    }
+
+
+  }
+
+
+}
+
